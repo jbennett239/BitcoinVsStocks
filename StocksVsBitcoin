@@ -1,0 +1,244 @@
+This is the stocks vs. bitcoin time series analysis. 
+
+#Start with the basic necessities
+import random
+import os
+import numpy as np
+import pandas as pd
+import requests
+import pandas_datareader as web
+import datetime as dt
+from datetime import date, timedelta, datetime
+import matplotlib.pyplot as plt
+from matplotlib.pylab import rcParams
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.offline import init_notebook_mode
+init_notebook_mode(connected=True)
+import matplotlib.colors
+import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from plotly.offline import init_notebook_mode
+
+
+from google.colab import files
+uploaded = files.upload()
+
+
+Top10Stocks = pd.read_csv('top_10_stock_data.csv')
+Top10Stocks.head()
+
+Top10Stocks.tail()
+
+Top10Stocks.info()
+
+#Any nulls, outliers, or duplicates?
+Top10Stocks.isnull().sum()
+
+
+#Pretty clean! Now lets describe it more.
+Top10Stocks.describe()
+
+
+Top10Stocks.head()
+
+
+
+Top10Stocks.head(25486)
+
+
+#Line plot that shows date on x axis and close on y axis with line labels by ticker
+
+import altair as alt
+import pandas as pd
+
+# Convert 'Date' column to datetime objects if it's not already
+Top10Stocks['Date'] = pd.to_datetime(Top10Stocks['Date'])
+
+#Disable the max rows limit
+alt.data_transformers.disable_max_rows()
+
+# Create the line plot
+chart = alt.Chart(Top10Stocks).mark_line().encode(
+    x='Date',
+    y='Close',
+    color='Ticker'
+).interactive()
+
+chart.properties(title='Top 10 Stock Close Prices 2015 thru 2024'
+)
+
+# Display the chart
+chart
+
+
+#Line plot residuals to insure not much unnecessary leftover data.
+import altair as alt
+import pandas as pd
+import statsmodels.formula.api as smf
+model = smf.ols('Close ~ Open', data=Top10Stocks)
+model_fit = model.fit()
+residuals = pd.DataFrame(model_fit.resid)
+fig, ax = plt.subplots(1,2, figsize=(15,3))
+residuals.plot(kind='line', title="Residuals", ax=ax[0])
+residuals.plot(kind='kde', title="Densities of Residual", ax=ax[1])
+plt.show()
+
+residuals.describe()
+
+
+from statsmodels.tsa.arima.model import ARIMA
+model = ARIMA(Top10Stocks['Open'], order=(5,1,0))
+model_fit = model.fit()
+print(model_fit.summary())
+
+
+
+model = ARIMA(Top10Stocks['Close'], order=(5,1,0))
+model_fit = model.fit()
+print(model_fit.summary())
+
+
+#Time to train & test! 1st split into training and testing data.
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_squared_error
+import numpy as np
+
+train_size = int(len(Top10Stocks) * 0.8)
+train, test = Top10Stocks[:train_size], Top10Stocks[train_size:]
+
+# Fit the ARIMA model
+p = 5
+d = 0
+q = 1
+
+# Select only the 'close' column (or any other numeric column) for the model
+model = ARIMA(train['Close'], order=(p, d, q))  # Changed this line to only use 'close' column
+model_fit = model.fit()
+
+# Forecast
+forecast = model.fit().forecast(steps=len(test))
+
+# For plotting, we need to align the forecast with the test set's index
+forecast_series = pd.Series(forecast, index=test.index)
+
+plt.plot(test['Close'], label='Actual')  # Changed this line to plot 'close' column
+plt.plot(forecast_series, label='Forecast')  # Changed to use forecast_series
+plt.legend()
+plt.show()
+
+# Calculate RMSE
+rmse = np.sqrt(mean_squared_error(test['Close'], forecast))  # Changed to use 'close' column
+print(f"RMSE:{rmse}")
+
+
+
+#Split into train and test sets
+import numpy as np # Import numpy for the sqrt function
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_squared_error
+
+X = Top10Stocks['Close'].values
+size = int(len(X) * 0.66)
+train, test = X[0:size], X[size:len(X)]
+history = [x for x in train]
+predictions = list()
+
+# walk-forward validation
+for t in range(len(test)):
+	model = ARIMA(history, order=(5,1,0))
+	model_fit = model.fit()
+	output = model_fit.forecast()
+	yhat = output[0]
+	predictions.append(yhat)
+	obs = test[t]
+	history.append(obs)
+	print('predicted=%f, expected=%f' % (yhat, obs))
+
+# evaluate forecasts
+rmse = np.sqrt(mean_squared_error(test, predictions)) # Use np.sqrt instead of sqrt
+print('Test RMSE: %.3f' % rmse)
+
+# plot forecasts against actual outcomes
+plt.plot(test)
+plt.plot(predictions, color='red')
+plt.title('Stocks Close Price Prediction')
+plt.xlabel('Time')
+plt.ylabel('Close Price')
+plt.show()
+
+
+# plot forecasts against actual outcomes
+plt.plot(test)
+plt.plot(predictions, color='red')
+plt.title('Stocks Close Price Prediction')
+plt.xlabel('Time')
+plt.ylabel('Close Price')
+plt.show()
+
+
+#Lets try using the Prophet forecasting method to further analyze
+!pip install prophet
+from prophet import Prophet # Changed import statement to reflect the new library name
+from prophet.plot import plot_plotly, plot_components_plotly # Updated import to reflect change
+
+#Create a copy of the DataFrame to avoid modifying the original
+Top10Stocks_prophet = Top10Stocks[['Date', 'Close']].copy()
+
+Top10Stocks_prophet = Top10Stocks_prophet.rename(columns={'Date': 'ds', 'Close': 'y'})
+
+m = Prophet()
+m.fit(Top10Stocks_prophet)
+
+# Use the renamed DataFrame
+future = m.make_future_dataframe(periods=365)
+forecast = m.predict(future)
+
+#Using m.plot()
+#For an interactive plot
+fig2 = plot_plotly(m, forecast)
+
+#Updated function name
+#For interactive plot of the components
+fig3 = plot_components_plotly(m, forecast) #Updated function name
+future = m.make_future_dataframe(periods=12 * 5,
+								freq='M')
+forecast = m.predict(future)
+forecast[['ds', 'yhat', 'yhat_lower',
+		'yhat_upper', 'trend',
+		'trend_lower', 'trend_upper']].tail()
+fig1 = m.plot(forecast, include_legend=True)
+print(fig1)
+m.fit(Top10Stocks_prophet)
+
+# Use the renamed DataFrame
+future = m.make_future_dataframe(periods=365)
+forecast = m.predict(future)
+fig1 = m.plot(forecast)
+
+#Using m.plot()
+#For an interactive plot
+fig2 = plot_plotly(m, forecast)
+
+#Updated function name
+#For interactive plot of the components
+fig3 = plot_components_plotly(m, forecast) #Updated function name
+future = m.make_future_dataframe(periods=12 * 5,
+								freq='M')
+forecast = m.predict(future)
+forecast[['ds', 'yhat', 'yhat_lower',
+		'yhat_upper', 'trend',
+		'trend_lower', 'trend_upper']].tail()
+fig1 = m.plot(forecast, include_legend=True)
+print(fig1)
+
+RMSE = np.sqrt(mean_squared_error(test, predictions))
+print(f"RMSE:{RMSE}")
+
+
+fig2=m.plot_components(forecast)
+print(fig2)
