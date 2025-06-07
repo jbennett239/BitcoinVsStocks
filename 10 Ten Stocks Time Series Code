@@ -1,4 +1,4 @@
-This is the stocks vs. bitcoin time series analysis code that anaylzed the top 10 stocks. 
+This is the stocks vs. bitcoin time series analysis code that anaylzed the top 10 stocks from 2015 -2024. 
 
 #Start with the basic necessities
 import random
